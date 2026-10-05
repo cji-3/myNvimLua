@@ -25,13 +25,29 @@ local function set_comment_highlight()
   vim.api.nvim_set_hl(0, "Comment", { fg = "#a9b1d6", italic = true })
 end
 
+local function set_diagnostic_highlights()
+  vim.api.nvim_set_hl(0, "DiagnosticUnnecessary", {
+    fg = "#c0caf5",
+    nocombine = true,
+  })
+end
+
+local function set_doxygen_highlight()
+  vim.api.nvim_set_hl(0, "DoxygenTag", { fg = "#e0af68", bold = true })
+end
+
 set_transparent_bg()
 set_cursorline_highlight()
 set_comment_highlight()
+set_diagnostic_highlights()
+set_doxygen_highlight()
+require("config.doxygen").setup_highlighting()
 vim.api.nvim_create_autocmd("ColorScheme", {
   callback = function()
     set_transparent_bg()
     set_cursorline_highlight()
     set_comment_highlight()
+    set_diagnostic_highlights()
+    set_doxygen_highlight()
   end,
 })
