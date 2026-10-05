@@ -45,6 +45,19 @@ return {
     },
   },
 
+  -- 多游標編輯
+  {
+    "mg979/vim-visual-multi",
+    init = function()
+      vim.g.VM_maps = {
+        ["Find Under"] = "<leader>m",
+        ["Find Subword Under"] = "<leader>m",
+        ["Add Cursor Down"] = "<C-j>",
+        ["Add Cursor Up"] = "<C-k>",
+      }
+    end,
+  },
+
   -- 新增：Gitsigns 程式碼變更提示 (列標示 + 修改預覽)
   {
     "lewis6991/gitsigns.nvim",
@@ -60,6 +73,15 @@ return {
     end
   },
 
+  -- Git commands and interactive status/diff views
+  {
+    "tpope/vim-fugitive",
+    cmd = { "Git", "G", "Gdiffsplit", "Gwrite" },
+    config = function()
+      require("plugins.fugitive_zh")
+    end,
+  },
+
   -- 自動補全
   {
     "hrsh7th/nvim-cmp",
@@ -71,6 +93,7 @@ return {
     config = function()
       local cmp = require("cmp")
       local luasnip = require("luasnip")
+      require("config.doxygen").setup_completion(cmp)
 
       cmp.setup({
         snippet = {
@@ -79,6 +102,7 @@ return {
           end,
         },
         sources = cmp.config.sources({
+          { name = 'doxygen' },
           { name = 'nvim_lsp' },
           { name = 'path' },
         }),
@@ -87,8 +111,8 @@ return {
           ['<C-k>'] = cmp.mapping.select_prev_item(),
           ['<Tab>'] = cmp.mapping.select_next_item(),
           ['<S-Tab>'] = cmp.mapping.select_prev_item(),
+          ['<C-b>'] = cmp.mapping.complete(),
           ['<CR>'] = cmp.mapping.confirm({ select = true }),
-          ['<C-Space>'] = cmp.mapping.complete(),
         }),
       })
     end
@@ -135,13 +159,106 @@ return {
         },
       })
 
+      local function format_hover_markdown(bufnr)
+        if vim.bo[bufnr].filetype ~= "markdown" then
+          return
+        end
+
+        local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+        local formatted = {}
+        local params = {}
+        local has_doxygen = false
+        local params_inserted = false
+        local function insert_params()
+          if not params_inserted and #params > 0 then
+            table.insert(formatted, "參數：")
+            vim.list_extend(formatted, params)
+            params_inserted = true
+          end
+        end
+
+        for _, line in ipairs(lines) do
+          local indent, slashes, tag, text = line:match("^(%s*)(\\+)(%a+)%s*(.*)$")
+          if slashes and #slashes >= 2 then
+            has_doxygen = true
+            if tag == "brief" or tag == "details" then
+              table.insert(formatted, indent .. text)
+            elseif tag == "param" then
+              local name, description = text:match("^(%S+)%s*(.*)$")
+              if name then
+                name = name:gsub("\\_", "_")
+                table.insert(params, "- `" .. name .. "`: " .. description)
+              end
+            elseif tag == "return" or tag == "returns" then
+              insert_params()
+              table.insert(formatted, indent .. "**回傳值：** " .. text)
+            elseif tag == "since" then
+              insert_params()
+              table.insert(formatted, indent .. "**版本：** " .. text)
+            else
+              insert_params()
+              table.insert(formatted, indent .. "**" .. tag .. "：** " .. text)
+            end
+          else
+            table.insert(formatted, line)
+          end
+        end
+
+        insert_params()
+        if not has_doxygen then
+          return
+        end
+
+        vim.bo[bufnr].modifiable = true
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, formatted)
+        vim.bo[bufnr].modifiable = false
+      end
+
+      local hover_group = vim.api.nvim_create_augroup("UserHoverDocumentation", { clear = true })
+      vim.api.nvim_create_autocmd("FileType", {
+        group = hover_group,
+        pattern = "markdown",
+        callback = function(event)
+          vim.schedule(function()
+            format_hover_markdown(event.buf)
+          end)
+        end,
+      })
+
       vim.api.nvim_create_autocmd('LspAttach', {
         callback = function(args)
           local opts = { buffer = args.buf, remap = false }
+          local client = vim.lsp.get_client_by_id(args.data.client_id)
           vim.keymap.set("n", "gd", function() vim.lsp.buf.definition() end, opts)
-          vim.keymap.set("n", "K", function() vim.lsp.buf.hover() end, opts)
+          vim.keymap.set("n", "K", function()
+            vim.lsp.buf.hover({ border = "rounded", max_width = 100, max_height = 30 })
+          end, opts)
           vim.keymap.set("n", "[d", function() vim.diagnostic.goto_next() end, opts)
           vim.keymap.set("n", "]d", function() vim.diagnostic.goto_prev() end, opts)
+
+          if client and client.server_capabilities.signatureHelpProvider then
+            local signature_group = vim.api.nvim_create_augroup(
+              "UserSignatureHelpBuffer" .. args.buf,
+              { clear = true }
+            )
+            vim.api.nvim_create_autocmd("InsertCharPre", {
+              group = signature_group,
+              buffer = args.buf,
+              callback = function()
+                local char = vim.v.char
+                if char ~= "(" and char ~= "," then
+                  return
+                end
+
+                vim.schedule(function()
+                  if vim.api.nvim_buf_is_valid(args.buf)
+                      and vim.api.nvim_get_current_buf() == args.buf then
+                    vim.lsp.buf.signature_help({ border = "rounded", silent = true })
+                  end
+                end)
+              end,
+            })
+          end
         end,
       })
     end
@@ -171,7 +288,14 @@ return {
     branch = "main",
     build = ":TSUpdate",
     config = function()
-      local languages = { "c", "cpp", "lua", "vim", "vimdoc" }
+      local languages = {
+        "c", "cpp", "lua", "vim", "vimdoc",
+        "markdown", "markdown_inline", "python", "json", "html", "xml",
+      }
+      local filetypes = {
+        "c", "cpp", "lua", "vim", "vimdoc", "markdown", "python", "json", "html", "xml",
+      }
+      local syntax_fallbacks = {}
       local treesitter = require("nvim-treesitter")
       treesitter.setup({
         install_dir = vim.fn.stdpath("data") .. "/site",
@@ -183,13 +307,20 @@ return {
 
         local parser_ok, parser = pcall(vim.treesitter.get_parser, bufnr, language)
         if parser_ok and parser then
+          if syntax_fallbacks[bufnr] then
+            vim.bo[bufnr].syntax = ""
+            syntax_fallbacks[bufnr] = nil
+          end
           vim.treesitter.start(bufnr, language)
           require("rainbow-delimiters").enable(bufnr)
+        elseif vim.tbl_contains(filetypes, vim.bo[bufnr].filetype) then
+          vim.bo[bufnr].syntax = vim.bo[bufnr].filetype
+          syntax_fallbacks[bufnr] = true
         end
       end
 
       vim.api.nvim_create_autocmd("FileType", {
-        pattern = languages,
+        pattern = filetypes,
         callback = function(args) start_treesitter(args.buf) end,
       })
 
@@ -209,8 +340,8 @@ return {
       local missing_cli = vim.fn.executable("tree-sitter") == 0
       local missing_parsers = {}
       for _, language in ipairs(languages) do
-        local parser_ok, parser = pcall(vim.treesitter.get_parser, 0, language)
-        if not parser_ok or not parser then
+        local parser_files = vim.api.nvim_get_runtime_file("parser/" .. language .. ".*", false)
+        if #parser_files == 0 then
           table.insert(missing_parsers, language)
         end
       end
@@ -244,7 +375,7 @@ return {
 
       vim.api.nvim_create_autocmd("FileType", {
         group = group,
-        pattern = { "c", "cpp", "lua", "vim", "vimdoc" },
+        pattern = filetypes,
         callback = function(args) attach_if_parser_exists(args.buf) end,
       })
 
@@ -252,6 +383,37 @@ return {
         if vim.api.nvim_buf_is_loaded(bufnr) then attach_if_parser_exists(bufnr) end
       end
     end,
+  },
+
+  -- HTML/XML 自動閉合與同步更名標籤
+  {
+    "windwp/nvim-ts-autotag",
+    dependencies = { "nvim-treesitter/nvim-treesitter" },
+    config = function()
+      require("nvim-ts-autotag").setup({
+        opts = {
+          enable_close = true,
+          enable_rename = true,
+          enable_close_on_slash = false,
+        },
+      })
+    end,
+  },
+
+  -- 診斷與錯誤清單
+  {
+    "folke/trouble.nvim",
+    dependencies = {
+      "nvim-tree/nvim-web-devicons",
+      "nvim-lua/plenary.nvim",
+      "MunifTanjim/nui.nvim",
+    },
+    opts = {},
+    cmd = "Trouble",
+    keys = {
+      { "<leader>xx", "<cmd>Trouble diagnostics toggle<cr>", desc = "開關所有診斷清單" },
+      { "<leader>xX", "<cmd>Trouble diagnostics toggle filter.buf=0<cr>", desc = "開關目前檔案診斷清單" },
+    },
   },
 
   -- 按鍵選單提示 (Which-key)
@@ -268,6 +430,9 @@ return {
       wk.setup(opts)
       wk.add({
         { "<leader>f", group = "搜尋/格式化" },
+        { "<leader>g", group = "Git" },
+        { "<leader>s", group = "包覆操作" },
+        { "<leader>x", group = "錯誤清單" },
         { "<leader>w", group = "視窗管理" },
         { "<leader>h", group = "Git 修改預覽" },
         { "<leader>t", group = "翻譯/終端機" },
@@ -280,9 +445,55 @@ return {
     "echasnovski/mini.nvim",
     version = false,
     config = function()
+      local mini_ai = require("mini.ai")
+      local function_query = [[
+        (function_definition) @function.outer
+        (function_definition body: (compound_statement) @function.inner)
+      ]]
+      local python_function_query = [[
+        (function_definition) @function.outer
+        (function_definition body: (block) @function.inner)
+      ]]
+
+      vim.treesitter.query.set("c", "textobjects", function_query)
+      vim.treesitter.query.set("cpp", "textobjects", function_query)
+      vim.treesitter.query.set("python", "textobjects", python_function_query)
+
       require("mini.animate").setup({
         cursor = { enable = true },
         scroll = { enable = true },
+      })
+      mini_ai.setup({
+        custom_textobjects = {
+          F = mini_ai.gen_spec.treesitter({
+            a = "@function.outer",
+            i = "@function.inner",
+          }),
+        },
+      })
+      require("mini.surround").setup({
+        mappings = {
+          add = "<leader>sa",
+          delete = "<leader>sd",
+          replace = "<leader>sr",
+          find = "",
+          find_left = "",
+          highlight = "",
+          suffix_last = "",
+          suffix_next = "",
+        },
+      })
+      require("mini.move").setup({
+        mappings = {
+          left = "",
+          right = "",
+          down = "<M-j>",
+          up = "<M-k>",
+          line_left = "",
+          line_right = "",
+          line_down = "<M-j>",
+          line_up = "<M-k>",
+        },
       })
     end,
   },
