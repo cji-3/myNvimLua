@@ -142,7 +142,7 @@ end, { desc = '恢復最近的檔案編輯區' })
 -- 分割視窗、關閉 buffer 與視窗配置。
 vim.keymap.set('n', '<leader>ws', '<C-w>s', { desc = '水平分割視窗' })
 vim.keymap.set('n', '<leader>wv', '<C-w>v', { desc = '垂直分割視窗' })
-vim.keymap.set('n', '<leader>wc', function()
+local function close_current_file(force)
   local api = vim.api
   local current_buf = api.nvim_get_current_buf()
   local current_win = api.nvim_get_current_win()
@@ -152,7 +152,7 @@ vim.keymap.set('n', '<leader>wc', function()
     return
   end
 
-  if vim.bo[current_buf].modified then
+  if vim.bo[current_buf].modified and not force then
     vim.notify('目前檔案尚未儲存，請先儲存或放棄變更', vim.log.levels.WARN)
     return
   end
@@ -184,8 +184,15 @@ vim.keymap.set('n', '<leader>wc', function()
   end
 
   api.nvim_win_set_buf(current_win, replacement)
-  api.nvim_buf_delete(current_buf, { force = false })
-end, { desc = '關閉目前檔案' })
+  api.nvim_buf_delete(current_buf, { force = force })
+end
+
+vim.keymap.set('n', '<leader>wc', function()
+  close_current_file(false)
+end, { desc = '安全關閉目前檔案' })
+vim.keymap.set('n', '<leader>wC', function()
+  close_current_file(true)
+end, { desc = '強制關閉目前檔案並丟棄未儲存變更' })
 vim.keymap.set('n', '<leader>wo', '<C-w>o', { desc = '關閉其他視窗' })
 vim.keymap.set('n', '<leader>w=', '<C-w>=', { desc = '等分所有視窗大小' })
 
@@ -219,6 +226,11 @@ vim.api.nvim_create_autocmd('TermOpen', {
 -- LSP 與程式碼格式化
 -- ============================================================================
 -- 格式化只交給 clangd。
+vim.keymap.set('n', '<leader>nh', '<cmd>nohlsearch<CR>', {
+  desc = '清除搜尋反白',
+  silent = true,
+})
+
 vim.keymap.set('n', '<leader>cf', function()
   local clients = vim.lsp.get_clients({ bufnr = 0, method = 'textDocument/formatting' })
   local clangd_attached = false

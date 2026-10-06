@@ -32,6 +32,14 @@ local function set_diagnostic_highlights()
   })
 end
 
+local function set_ibl_scope_highlights()
+  vim.api.nvim_set_hl(0, "@ibl.scope.underline.1", {
+    bold = true,
+    underline = false,
+    undercurl = false,
+  })
+end
+
 local function set_doxygen_highlight()
   vim.api.nvim_set_hl(0, "DoxygenTag", { fg = "#e0af68", bold = true })
 end
@@ -40,6 +48,7 @@ set_transparent_bg()
 set_cursorline_highlight()
 set_comment_highlight()
 set_diagnostic_highlights()
+set_ibl_scope_highlights()
 set_doxygen_highlight()
 require("config.doxygen").setup_highlighting()
 vim.api.nvim_create_autocmd("ColorScheme", {
@@ -48,6 +57,7 @@ vim.api.nvim_create_autocmd("ColorScheme", {
     set_cursorline_highlight()
     set_comment_highlight()
     set_diagnostic_highlights()
+    set_ibl_scope_highlights()
     set_doxygen_highlight()
   end,
 })
