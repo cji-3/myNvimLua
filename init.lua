@@ -32,3 +32,4 @@ require("config.editor")
 -- 套件規格與外觀設定。
 require("lazy").setup(require("config.plugins"))
 require("config.appearance")
+require("config.environment").setup()

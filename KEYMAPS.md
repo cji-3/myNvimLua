@@ -21,6 +21,7 @@
 | `<leader>fg` | Normal | Telescope 搜尋程式碼內容（Live Grep） |
 | `<leader>fb` | Normal | Telescope 搜尋已開啟的 buffer |
 | `<leader>fh` | Normal | 搜尋 Neovim 說明文件 |
+| `<leader>nh` | Normal | 清除搜尋結果反白（`:nohlsearch`） |
 
 ### 視窗與 buffer
 
@@ -31,13 +32,14 @@
 | `<leader>ws` | 水平分割視窗 |
 | `<leader>wv` | 垂直分割視窗 |
 | `<leader>wc` | 關閉目前檔案 buffer；切換至其他一般檔案，若沒有其他檔案則留下空白編輯區 |
+| `<leader>wC` | 強制關閉目前檔案 buffer，直接丟棄未儲存變更 |
 | `<leader>wo` | 關閉其他視窗 |
 | `<leader>w=` | 平均調整所有視窗大小 |
 | `<leader>Q` | 退出所有視窗 |
 | `gt` / `gT` | 切換至下一個／上一個 buffer |
 | `<A-l>` / `<A-h>` | 切換至下一個／上一個 buffer |
 
-`<leader>wc` 不會強制關閉有未儲存修改的檔案。直接輸入 `:bd`、`:q` 則維持 Neovim 原生行為。
+`<leader>wc` 不會強制關閉有未儲存修改的檔案；`<leader>wC` 會直接丟棄未儲存變更，請小心使用。直接輸入 `:bd`、`:q` 則維持 Neovim 原生行為。
 
 ### Git
 
@@ -165,15 +167,18 @@ Comment.nvim 使用預設映射：`gcc` 切換目前行註解；`gc` 加上移�
 | 快捷鍵 | 功能 |
 | --- | --- |
 | `<leader>r` | 重新載入 `init.lua` 與 `config.editor`；已載入插件的設定變更可能需要重開 Neovim |
+| `:NvimCheckEnv` | 手動檢查 Git、GCC、LLVM clangd 與 Tree-sitter parser 等外部依賴 |
+
+Neovim 啟動後會自動檢查外部依賴；若有缺少，會列出名稱和用途。clangd 可由 Mason 安裝：`:MasonInstall clangd`。
 
 ## 主要功能
 
-- **C/C++ 開發**：Mason 管理 clangd；支援補全、跳轉定義、說明、診斷與 clangd 格式化。格式化使用 4 格縮排設定。
+- **C/C++ 開發**：Mason 管理 clangd；支援補全、跳轉定義、說明、診斷與 clangd 格式化。游標所在函式／條件區塊的 scope 提示使用亮色粗體、不加底線。格式化使用 4 格縮排設定。
 - **語法與括號**：Tree-sitter 支援 C、C++（`.ino` 以 C++ 開啟）、Lua、Vim、Vim help、Markdown、Python、JSON、HTML 與 XML；`.bat` 使用 Neovim 內建語法高亮；彩虹括號使用三色循環；C/C++ 註解中的 Doxygen 標籤（如 `\param`、`@return`）以金色粗體顯示並支援補全。
 - **Git**：vim-fugitive 提供互動狀態／差異檢視與 Git 命令；Gitsigns 在行側標示修改區塊。
 - **檔案導覽**：NvimTree 檔案樹與 Telescope 檔案、文字、buffer 搜尋。
 - **編輯輔助**：nvim-cmp 補全、nvim-autopairs 自動括號配對、nvim-ts-autotag HTML/XML 標籤配對、mini.surround 包覆操作、mini.ai 文字物件、mini.move 區塊移動、Trouble 診斷面板、Comment.nvim 註解、Flash 快速跳轉、vim-visual-multi 多游標編輯。
-- **介面**：Tokyo Night 主題、透明背景、絕對／相對行號、縮排導引線、Bufferline、Lualine 狀態列、Scrollbar、診斷提示與游標／捲動畫面效果。
+- **介面**：Tokyo Night 主題、透明背景、絕對／相對行號、縮排導引線、Bufferline、Lualine 狀態列、Scrollbar、診斷提示；游標與捲動畫面不使用動態動畫。
 - **翻譯**：Bing 英中翻譯，提供彈窗、通知與命名風格替換。
 
 ## 使用者設定

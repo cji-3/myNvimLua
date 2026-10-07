@@ -460,8 +460,8 @@ return {
       vim.treesitter.query.set("python", "textobjects", python_function_query)
 
       require("mini.animate").setup({
-        cursor = { enable = true },
-        scroll = { enable = true },
+        cursor = { enable = false },
+        scroll = { enable = false },
       })
       mini_ai.setup({
         custom_textobjects = {
