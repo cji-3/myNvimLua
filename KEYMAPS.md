@@ -49,6 +49,8 @@
 | `<leader>gd` | 開啟 Git 差異檢視 |
 | `<leader>ga` | 儲存並暫存目前檔案（Fugitive `:Gwrite`） |
 | `<leader>gc` | 提交 Git 變更並輸入 commit message |
+| `<leader>gf` | 執行 Git fetch，取得遠端更新但不合併 |
+| `<leader>gl` | 執行 Git pull，拉取並整合遠端更新 |
 | `<leader>gp` | 執行 Git push |
 | `[h` / `]h` | 跳至上一個／下一個 Git 修改區塊 |
 | `<leader>hp` | 預覽目前 Git 修改區塊 |
