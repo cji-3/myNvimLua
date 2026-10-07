@@ -208,6 +208,34 @@ vim.keymap.set('n', '<leader>gc', '<cmd>Git commit<CR>', { desc = '提交 Git �
 vim.keymap.set('n', '<leader>gf', '<cmd>Git fetch<CR>', { desc = '取得遠端 Git 更新' })
 vim.keymap.set('n', '<leader>gl', '<cmd>Git pull<CR>', { desc = '拉取遠端 Git 更新' })
 vim.keymap.set('n', '<leader>gp', '<cmd>Git push<CR>', { desc = '推送 Git 變更' })
+vim.keymap.set('n', '<leader>gb', '<cmd>Git branch<CR>', { desc = '列出本地 Git 分支' })
+vim.keymap.set('n', '<leader>gB', function()
+  vim.ui.input({ prompt = '切換至分支：' }, function(branch)
+    if not branch or branch == '' then
+      return
+    end
+    vim.cmd('Git switch ' .. vim.fn.shellescape(branch))
+  end)
+end, { desc = '切換 Git 分支' })
+vim.keymap.set('n', '<leader>gN', function()
+  vim.ui.input({ prompt = '建立並切換至新分支：' }, function(branch)
+    if not branch or branch == '' then
+      return
+    end
+    vim.cmd('Git switch -c ' .. vim.fn.shellescape(branch))
+  end)
+end, { desc = '建立並切換 Git 分支' })
+vim.keymap.set('n', '<leader>gD', function()
+  vim.ui.input({ prompt = '刪除本地分支：' }, function(branch)
+    if not branch or branch == '' then
+      return
+    end
+    if vim.fn.confirm(('確定刪除本地分支「%s」？'):format(branch), '&刪除\n&取消', 2) ~= 1 then
+      return
+    end
+    vim.cmd('Git branch -d ' .. vim.fn.shellescape(branch))
+  end)
+end, { desc = '刪除本地 Git 分支' })
 vim.keymap.set('n', '<leader>/', function()
   vim.cmd('botright 12split | terminal')
   vim.cmd('startinsert')

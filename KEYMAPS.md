@@ -52,6 +52,10 @@
 | `<leader>gf` | 執行 Git fetch，取得遠端更新但不合併 |
 | `<leader>gl` | 執行 Git pull，拉取並整合遠端更新 |
 | `<leader>gp` | 執行 Git push |
+| `<leader>gb` | 列出本地 Git 分支 |
+| `<leader>gB` | 輸入分支名稱並切換分支 |
+| `<leader>gN` | 輸入名稱以建立並切換至新分支 |
+| `<leader>gD` | 輸入本地分支名稱，確認後安全刪除（僅刪除已合併分支） |
 | `[h` / `]h` | 跳至上一個／下一個 Git 修改區塊 |
 | `<leader>hp` | 預覽目前 Git 修改區塊 |
 
