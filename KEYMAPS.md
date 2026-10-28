@@ -31,7 +31,7 @@
 | `<leader>wn` | 恢復最近開啟的檔案編輯區；若目前只有檔案樹則保留檔案樹並開回該檔案 |
 | `<leader>ws` | 水平分割視窗 |
 | `<leader>wv` | 垂直分割視窗 |
-| `<leader>wc` | 關閉目前檔案 buffer；切換至其他一般檔案，若沒有其他檔案則留下空白編輯區 |
+| `<leader>wc` | 關閉目前檔案 buffer；若目前是終端機則關閉 shell 並保留編輯區與檔案樹 |
 | `<leader>wC` | 強制關閉目前檔案 buffer，直接丟棄未儲存變更 |
 | `<leader>wo` | 關閉其他視窗 |
 | `<leader>w=` | 平均調整所有視窗大小 |
@@ -39,7 +39,7 @@
 | `gt` / `gT` | 切換至下一個／上一個 buffer |
 | `<A-l>` / `<A-h>` | 切換至下一個／上一個 buffer |
 
-`<leader>wc` 不會強制關閉有未儲存修改的檔案；`<leader>wC` 會直接丟棄未儲存變更，請小心使用。直接輸入 `:bd`、`:q` 則維持 Neovim 原生行為。
+`<leader>wc` 不會強制關閉有未儲存修改的檔案；在終端機 buffer 使用時會關閉終端機並結束 shell，將終端機視窗切回最近的編輯區，保留檔案樹。`<leader>wC` 會直接丟棄未儲存變更，請小心使用。直接輸入 `:bd`、`:q` 則維持 Neovim 原生行為。
 
 ### Git
 
@@ -81,9 +81,15 @@ Fugitive 狀態面板常用操作（先以 `<leader>gs` 開啟）：
 | `<leader>z` | Normal，C/C++ | 游標在成對括號內時，清理目前行距離最近的多餘 `)`／`}` |
 | `<leader>xx` | Normal | 開啟／關閉所有檔案的錯誤與警告清單 |
 | `<leader>xX` | Normal | 開啟／關閉目前檔案的錯誤與警告清單 |
-| `gd` | Normal，clangd 附加時 | 跳至定義 |
-| `K` | Normal，clangd 附加時 | 顯示符號說明 |
-| `[d` / `]d` | Normal，clangd 附加時 | 跳至上一個／下一個診斷 |
+| `gd` | Normal，LSP 附加時 | 跳至定義 |
+| `<leader>lr` | Normal，LSP 附加時 | 重新命名游標所在的符號 |
+| `<leader>la` | Normal，LSP 附加時 | 顯示游標所在符號可用的程式碼動作 |
+| `<leader>ld` | Normal，LSP 附加時 | 跳至宣告 |
+| `<leader>li` | Normal，LSP 附加時 | 跳至實作 |
+| `<leader>lR` | Normal，LSP 附加時 | 尋找游標所在符號的引用 |
+| `<leader>lt` | Normal，LSP 附加時 | 跳至型別定義 |
+| `K` | Normal，LSP 附加時 | 顯示符號說明 |
+| `[d` / `]d` | Normal，LSP 附加時 | 跳至上一個／下一個診斷 |
 | `s` | Normal、Visual、Operator-pending | Flash 快速跳轉 |
 | `S` | Normal、Visual、Operator-pending | Flash Tree-sitter 跳轉／選取 |
 
@@ -123,7 +129,7 @@ Fugitive 狀態面板常用操作（先以 `<leader>gs` 開啟）：
 
 在 C/C++ 中按 `<leader>z`（`Space`、`z`），只有游標位於整個檔案中確定成對的 `()`／`{}` 內才會執行。若這組括號後方同一行有多出的同類右括號，會刪除距離游標最近的閉合符號，讓後方括號接替配對；否則只刪除最近的不成對右括號。每次只刪一個，還有多餘括號時可再按一次。掃描會考慮跨行配對，並忽略註解與字串；若游標不在成對括號內或沒有可處理的右括號，內容不會變更。不需要等待 clangd 診斷。
 
-在函式呼叫中輸入 `(` 或 `,` 時，clangd 會自動開啟帶圓角框的簽名提示，並標示目前參數。按 `K` 會以 Markdown 浮窗顯示 clangd hover 文件；若函式有 Doxygen 註解，設定會將 brief、參數、回傳值等標籤轉成易讀格式。
+按 `<leader>l` 後稍候即可透過 which-key 查看 LSP 操作提示；其中 `<leader>lr` 重新命名符號，`<leader>lR` 尋找符號引用。原有的 `gd`、`K`、`[d`／`]d` 也會顯示操作說明，且上述 LSP 快捷鍵僅在 LSP 附加的 buffer 生效。在函式呼叫中輸入 `(` 或 `,` 時，clangd 會自動開啟帶圓角框的簽名提示，並標示目前參數。按 `K` 會以 Markdown 浮窗顯示 clangd hover 文件；若函式有 Doxygen 註解，設定會將 brief、參數、回傳值等標籤轉成易讀格式。
 
 自動補全（Insert 模式）：
 
@@ -157,16 +163,20 @@ Comment.nvim 使用預設映射：`gcc` 切換目前行註解；`gc` 加上移�
 
 彈窗使用自動尺寸、圓角邊框與方向標題，並盡量顯示在游標下方。按 `q`、`Esc` 或 `Enter` 關閉彈窗。
 
+收到錯誤或警告診斷後，會等待約一秒再使用 Bing 自動翻譯，並將繁體中文譯文附加於對應行尾，不必移動游標；譯文沿用錯誤／警告的色系並調亮顯示，且會快取以避免重複請求。診斷訊息會傳送至 Bing 翻譯服務。
+
 ### 終端機
 
 | 快捷鍵 | 功能 |
 | --- | --- |
-| `<leader>/` | 在底部開啟內建終端機並進入輸入模式 |
+| `<leader>/` | 在新分頁開啟內建終端機並進入輸入模式 |
+| `<leader>c` | 在目前視窗下方開啟內建終端機並進入輸入模式 |
 | `Ctrl+\`，接著 `Ctrl+n` | 從終端機模式返回 Normal 模式 |
+| `<C-g>` | 返回上一個 buffer 並保留終端機程序 |
 | `<C-q>` | 關閉終端機並結束 shell 程序 |
 | `i` | 從 Normal 模式返回終端機輸入模式 |
 
-在終端機輸入 `:q` 會把文字送給 shell，因為此時不是 Neovim 命令模式。要關閉終端機可直接按 `<C-q>`；或先按 `Ctrl+\`、`Ctrl+n` 離開終端機模式，再執行 `:q` 關閉視窗（shell 程序會繼續執行）。
+終端機文字使用橘色顯示。在終端機輸入 `:q` 會把文字送給 shell，因為此時不是 Neovim 命令模式。要暫時回到上一個 buffer 並讓 shell 繼續執行，直接按 `<C-g>`；要結束 shell 並關閉終端機則按 `<C-q>`。也可按 `Ctrl+\`、`Ctrl+n` 離開終端機模式，再執行 `:q` 關閉視窗（shell 程序會繼續執行）。
 
 ### 重新載入設定
 
@@ -183,7 +193,7 @@ Neovim 啟動後會自動檢查外部依賴；若有缺少，會列出名稱和�
 - **語法與括號**：Tree-sitter 支援 C、C++（`.ino` 以 C++ 開啟）、Lua、Vim、Vim help、Markdown、Python、JSON、HTML 與 XML；`.bat` 使用 Neovim 內建語法高亮；彩虹括號使用三色循環；C/C++ 註解中的 Doxygen 標籤（如 `\param`、`@return`）以金色粗體顯示並支援補全。
 - **Git**：vim-fugitive 提供互動狀態／差異檢視與 Git 命令；Gitsigns 在行側標示修改區塊。
 - **檔案導覽**：NvimTree 檔案樹與 Telescope 檔案、文字、buffer 搜尋。
-- **編輯輔助**：nvim-cmp 補全、nvim-autopairs 自動括號配對、nvim-ts-autotag HTML/XML 標籤配對、mini.surround 包覆操作、mini.ai 文字物件、mini.move 區塊移動、Trouble 診斷面板、Comment.nvim 註解、Flash 快速跳轉、vim-visual-multi 多游標編輯。
+- **編輯輔助**：nvim-cmp 補全（候選名稱忽略大小寫與標點符號後，較短的項目優先顯示）、nvim-autopairs 自動括號配對、nvim-ts-autotag HTML/XML 標籤配對、mini.surround 包覆操作、mini.ai 文字物件、mini.move 區塊移動、Trouble 診斷面板、Comment.nvim 註解、Flash 快速跳轉、vim-visual-multi 多游標編輯。
 - **介面**：Tokyo Night 主題、透明背景、絕對／相對行號、縮排導引線、Bufferline、Lualine 狀態列、Scrollbar、診斷提示；游標與捲動畫面不使用動態動畫。
 - **翻譯**：Bing 英中翻譯，提供彈窗、通知與命名風格替換。
 

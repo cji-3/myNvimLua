@@ -1,6 +1,9 @@
 -- Diagnostic 提示設定
 vim.diagnostic.config({
   update_in_insert = false,
+  virtual_text = {
+    virt_text_pos = 'eol',
+  },
 })
 
 -- ============================================================================

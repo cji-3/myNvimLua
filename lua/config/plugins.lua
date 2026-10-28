@@ -16,7 +16,10 @@ return {
     "nvim-tree/nvim-tree.lua",
     dependencies = { "nvim-tree/nvim-web-devicons" },
     config = function()
-      require("nvim-tree").setup({ view = { width = 30 } })
+      require("nvim-tree").setup({
+        view = { width = 30 },
+        tab = { sync = { open = true } },
+      })
       vim.keymap.set('n', '<C-n>', ':NvimTreeToggle<CR>', { silent = true })
     end
   },
@@ -95,11 +98,42 @@ return {
       local luasnip = require("luasnip")
       require("config.doxygen").setup_completion(cmp)
 
+      local function normalize_completion_text(text)
+        return text:lower():gsub('[^%w]', '')
+      end
+
+      local function shorter_completion_first(entry1, entry2)
+        if entry1.offset ~= entry2.offset then
+          return nil
+        end
+
+        local length1 = #normalize_completion_text(entry1.completion_item.label)
+        local length2 = #normalize_completion_text(entry2.completion_item.label)
+        if length1 ~= length2 then
+          return length1 < length2
+        end
+        return nil
+      end
+
       cmp.setup({
         snippet = {
           expand = function(args)
             luasnip.lsp_expand(args.body)
           end,
+        },
+        sorting = {
+          comparators = {
+            cmp.config.compare.offset,
+            shorter_completion_first,
+            cmp.config.compare.exact,
+            cmp.config.compare.score,
+            cmp.config.compare.recently_used,
+            cmp.config.compare.locality,
+            cmp.config.compare.kind,
+            cmp.config.compare.sort_text,
+            cmp.config.compare.length,
+            cmp.config.compare.order,
+          },
         },
         sources = cmp.config.sources({
           { name = 'doxygen' },
@@ -229,12 +263,58 @@ return {
         callback = function(args)
           local opts = { buffer = args.buf, remap = false }
           local client = vim.lsp.get_client_by_id(args.data.client_id)
-          vim.keymap.set("n", "gd", function() vim.lsp.buf.definition() end, opts)
+          vim.keymap.set("n", "gd", function() vim.lsp.buf.definition() end, {
+            buffer = args.buf,
+            remap = false,
+            desc = "跳至定義",
+          })
           vim.keymap.set("n", "K", function()
             vim.lsp.buf.hover({ border = "rounded", max_width = 100, max_height = 30 })
-          end, opts)
-          vim.keymap.set("n", "[d", function() vim.diagnostic.goto_next() end, opts)
-          vim.keymap.set("n", "]d", function() vim.diagnostic.goto_prev() end, opts)
+          end, {
+            buffer = args.buf,
+            remap = false,
+            desc = "顯示符號說明",
+          })
+          vim.keymap.set("n", "<leader>lr", function() vim.lsp.buf.rename() end, {
+            buffer = args.buf,
+            remap = false,
+            desc = "重新命名符號",
+          })
+          vim.keymap.set("n", "<leader>la", function() vim.lsp.buf.code_action() end, {
+            buffer = args.buf,
+            remap = false,
+            desc = "顯示程式碼動作",
+          })
+          vim.keymap.set("n", "<leader>ld", function() vim.lsp.buf.declaration() end, {
+            buffer = args.buf,
+            remap = false,
+            desc = "跳至宣告",
+          })
+          vim.keymap.set("n", "<leader>li", function() vim.lsp.buf.implementation() end, {
+            buffer = args.buf,
+            remap = false,
+            desc = "跳至實作",
+          })
+          vim.keymap.set("n", "<leader>lR", function() vim.lsp.buf.references() end, {
+            buffer = args.buf,
+            remap = false,
+            desc = "尋找符號引用",
+          })
+          vim.keymap.set("n", "<leader>lt", function() vim.lsp.buf.type_definition() end, {
+            buffer = args.buf,
+            remap = false,
+            desc = "跳至型別定義",
+          })
+          vim.keymap.set("n", "[d", function() vim.diagnostic.goto_next() end, vim.tbl_extend(
+            "force",
+            opts,
+            { desc = "跳至上一個診斷" }
+          ))
+          vim.keymap.set("n", "]d", function() vim.diagnostic.goto_prev() end, vim.tbl_extend(
+            "force",
+            opts,
+            { desc = "跳至下一個診斷" }
+          ))
 
           if client and client.server_capabilities.signatureHelpProvider then
             local signature_group = vim.api.nvim_create_augroup(
@@ -431,6 +511,7 @@ return {
       wk.add({
         { "<leader>f", group = "搜尋/格式化" },
         { "<leader>g", group = "Git" },
+        { "<leader>l", group = "LSP" },
         { "<leader>s", group = "包覆操作" },
         { "<leader>x", group = "錯誤清單" },
         { "<leader>w", group = "視窗管理" },

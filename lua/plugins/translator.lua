@@ -58,13 +58,21 @@ return {
         vim.notify(message, vim.log.levels.ERROR, { title = "Bing 翻譯" })
       end
 
-      local function translate_with_bing(text, target_lang, callback)
+      local function translate_with_bing(text, target_lang, callback, on_error)
+        local function fail(message)
+          if on_error then
+            on_error(message)
+          else
+            report_error(message)
+          end
+        end
+
         vim.system({ "curl", "-fsSL", "--max-time", "20", "https://www.bing.com/translator" }, {
           text = true,
         }, function(page_result)
           vim.schedule(function()
             if page_result.code ~= 0 then
-              report_error("無法載入 Bing 翻譯頁面：" .. (page_result.stderr or "curl 失敗"))
+              fail("無法載入 Bing 翻譯頁面：" .. (page_result.stderr or "curl 失敗"))
               return
             end
 
@@ -74,7 +82,7 @@ return {
               'params_AbusePreventionHelper%s*=%s*%[(%d+),"([^"]+)",%d+%]'
             )
             if not (ig and iid and timestamp and token) then
-              report_error("無法從 Bing 頁面取得翻譯所需的暫時參數")
+              fail("無法從 Bing 頁面取得翻譯所需的暫時參數")
               return
             end
 
@@ -93,20 +101,20 @@ return {
             }, { text = true }, function(result)
               vim.schedule(function()
                 if result.code ~= 0 then
-                  report_error("Bing 翻譯連線失敗：" .. (result.stderr or "curl 失敗"))
+                  fail("Bing 翻譯連線失敗：" .. (result.stderr or "curl 失敗"))
                   return
                 end
 
                 local response, status = (result.stdout or ""):match("^(.*)\n(%d%d%d)%s*$")
                 if not status or status:sub(1, 1) ~= "2" then
-                  report_error("Bing 翻譯回應 HTTP " .. (status or "未知狀態"))
+                  fail("Bing 翻譯回應 HTTP " .. (status or "未知狀態"))
                   return
                 end
 
                 local ok, decoded = pcall(vim.json.decode, response)
                 if not ok or type(decoded) ~= "table" or type(decoded[1]) ~= "table"
                     or type(decoded[1].translations) ~= "table" then
-                  report_error("無法解析 Bing 翻譯結果")
+                  fail("無法解析 Bing 翻譯結果")
                   return
                 end
 
@@ -118,7 +126,7 @@ return {
                 end
                 local translated_text = table.concat(translated)
                 if translated_text == "" then
-                  report_error("Bing 沒有回傳翻譯內容")
+                  fail("Bing 沒有回傳翻譯內容")
                   return
                 end
                 callback(translated_text)
@@ -127,6 +135,149 @@ return {
           end)
         end)
       end
+
+      local diagnostic_namespace = vim.api.nvim_create_namespace("UserDiagnosticTranslations")
+      local diagnostic_translations = {}
+      local diagnostic_translation_errors = {}
+      local diagnostic_translations_pending = {}
+      local diagnostic_change_generations = {}
+
+      local function lighten_diagnostic_color(group, fallback_group)
+        local highlight = vim.api.nvim_get_hl(0, { name = group, link = false })
+        local foreground = highlight.fg
+        if not foreground then
+          foreground = vim.api.nvim_get_hl(0, { name = fallback_group, link = false }).fg
+        end
+        if not foreground then
+          return nil
+        end
+
+        local red = math.floor(foreground / 65536) % 256
+        local green = math.floor(foreground / 256) % 256
+        local blue = foreground % 256
+        local function lighten(channel)
+          return math.floor(channel + (255 - channel) * 0.25)
+        end
+        return string.format("#%02x%02x%02x", lighten(red), lighten(green), lighten(blue))
+      end
+
+      local function set_diagnostic_translation_highlights()
+        local error_color = lighten_diagnostic_color("DiagnosticError", "DiagnosticVirtualTextError")
+        local warning_color = lighten_diagnostic_color("DiagnosticWarn", "DiagnosticVirtualTextWarn")
+        if error_color then
+          vim.api.nvim_set_hl(0, "DiagnosticTranslationError", { fg = error_color })
+        end
+        if warning_color then
+          vim.api.nvim_set_hl(0, "DiagnosticTranslationWarn", { fg = warning_color })
+        end
+      end
+
+      set_diagnostic_translation_highlights()
+      vim.api.nvim_create_autocmd("ColorScheme", {
+        group = vim.api.nvim_create_augroup("UserDiagnosticTranslationHighlights", { clear = true }),
+        callback = set_diagnostic_translation_highlights,
+      })
+
+      local function get_translatable_diagnostics(bufnr)
+        local diagnostics = {}
+        local seen = {}
+        for _, diagnostic in ipairs(vim.diagnostic.get(bufnr)) do
+          if diagnostic.severity and diagnostic.severity <= vim.diagnostic.severity.WARN
+              and type(diagnostic.message) == "string" and diagnostic.message ~= "" then
+            local key = diagnostic.lnum .. "\0" .. diagnostic.message
+            local existing = seen[key]
+            if not existing then
+              existing = { lnum = diagnostic.lnum, message = diagnostic.message, severity = diagnostic.severity }
+              seen[key] = existing
+              table.insert(diagnostics, existing)
+            elseif diagnostic.severity < existing.severity then
+              existing.severity = diagnostic.severity
+            end
+          end
+        end
+        return diagnostics
+      end
+
+      local function show_diagnostic_translations(bufnr)
+        if not vim.api.nvim_buf_is_valid(bufnr) then
+          return
+        end
+
+        vim.api.nvim_buf_clear_namespace(bufnr, diagnostic_namespace, 0, -1)
+        local lines = {}
+        for _, diagnostic in ipairs(get_translatable_diagnostics(bufnr)) do
+          local translated = diagnostic_translations[diagnostic.message]
+          if translated then
+            lines[diagnostic.lnum] = lines[diagnostic.lnum] or {}
+            table.insert(lines[diagnostic.lnum], {
+              text = translated,
+              highlight = diagnostic.severity == vim.diagnostic.severity.ERROR
+                  and "DiagnosticTranslationError" or "DiagnosticTranslationWarn",
+            })
+          end
+        end
+
+        for lnum, translations in pairs(lines) do
+          local virtual_text = {}
+          for index, translation in ipairs(translations) do
+            if index > 1 then
+              table.insert(virtual_text, { "  ", "DiagnosticVirtualTextInfo" })
+            end
+            table.insert(virtual_text, { "₪ ".. translation.text, translation.highlight })
+          end
+
+          vim.api.nvim_buf_set_extmark(bufnr, diagnostic_namespace, lnum, 0, {
+            virt_text = virtual_text,
+            virt_text_pos = "eol",
+            priority = 200,
+          })
+        end
+      end
+
+      local function translate_buffer_diagnostics(bufnr)
+        local diagnostics = get_translatable_diagnostics(bufnr)
+        show_diagnostic_translations(bufnr)
+        for _, diagnostic in ipairs(diagnostics) do
+          local message = diagnostic.message
+          if not diagnostic_translations[message]
+              and not diagnostic_translation_errors[message]
+              and not diagnostic_translations_pending[message] then
+            diagnostic_translations_pending[message] = true
+            translate_with_bing(message, "zh-TW", function(translated)
+              diagnostic_translations_pending[message] = nil
+              diagnostic_translations[message] = translated
+              show_diagnostic_translations(bufnr)
+            end, function(error_message)
+              diagnostic_translations_pending[message] = nil
+              diagnostic_translation_errors[message] = error_message
+              vim.notify("診斷訊息翻譯失敗：" .. error_message, vim.log.levels.WARN, {
+                title = "Bing 翻譯",
+              })
+            end)
+          end
+        end
+      end
+
+      local diagnostic_group = vim.api.nvim_create_augroup("UserDiagnosticTranslation", { clear = true })
+      vim.api.nvim_create_autocmd("DiagnosticChanged", {
+        group = diagnostic_group,
+        callback = function(args)
+          local bufnr = args.buf
+          if not vim.api.nvim_buf_is_valid(bufnr) then
+            return
+          end
+
+          show_diagnostic_translations(bufnr)
+          diagnostic_change_generations[bufnr] = (diagnostic_change_generations[bufnr] or 0) + 1
+          local generation = diagnostic_change_generations[bufnr]
+          vim.defer_fn(function()
+            if vim.api.nvim_buf_is_valid(bufnr)
+                and diagnostic_change_generations[bufnr] == generation then
+              translate_buffer_diagnostics(bufnr)
+            end
+          end, 1000)
+        end,
+      })
 
       local function get_source_text()
         local mode = vim.fn.mode()

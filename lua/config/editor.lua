@@ -142,10 +142,52 @@ end, { desc = '恢復最近的檔案編輯區' })
 -- 分割視窗、關閉 buffer 與視窗配置。
 vim.keymap.set('n', '<leader>ws', '<C-w>s', { desc = '水平分割視窗' })
 vim.keymap.set('n', '<leader>wv', '<C-w>v', { desc = '垂直分割視窗' })
+local function close_terminal_buffer(buf, win)
+  local api = vim.api
+  local replacement = last_edit_buffer
+  if not replacement
+      or not api.nvim_buf_is_valid(replacement)
+      or vim.bo[replacement].buftype ~= ''
+      or api.nvim_buf_get_name(replacement) == '' then
+    replacement = nil
+  end
+
+  if not replacement then
+    local latest = -1
+    for _, info in ipairs(vim.fn.getbufinfo({ buflisted = 1 })) do
+      local candidate = info.bufnr
+      if candidate ~= buf
+          and api.nvim_buf_is_valid(candidate)
+          and vim.bo[candidate].buftype == ''
+          and api.nvim_buf_get_name(candidate) ~= ''
+          and info.lastused > latest then
+        replacement = candidate
+        latest = info.lastused
+      end
+    end
+  end
+
+  if not replacement then
+    replacement = api.nvim_create_buf(true, false)
+  end
+
+  if api.nvim_win_is_valid(win) and api.nvim_win_get_buf(win) == buf then
+    api.nvim_win_set_buf(win, replacement)
+  end
+  if api.nvim_buf_is_valid(buf) then
+    api.nvim_buf_delete(buf, { force = true })
+  end
+end
+
 local function close_current_file(force)
   local api = vim.api
   local current_buf = api.nvim_get_current_buf()
   local current_win = api.nvim_get_current_win()
+
+  if vim.bo[current_buf].buftype == 'terminal' then
+    close_terminal_buffer(current_buf, current_win)
+    return
+  end
 
   if vim.bo[current_buf].buftype ~= '' or api.nvim_buf_get_name(current_buf) == '' then
     vim.notify('目前視窗不是一般檔案，沒有可關閉的檔案', vim.log.levels.WARN)
@@ -236,17 +278,84 @@ vim.keymap.set('n', '<leader>gD', function()
     vim.cmd('Git branch -d ' .. vim.fn.shellescape(branch))
   end)
 end, { desc = '刪除本地 Git 分支' })
+local terminal_highlight_group = 'UserTerminalOrange'
+local terminal_window_highlights = setmetatable({}, { __mode = 'k' })
+
+local function set_terminal_highlight()
+  vim.api.nvim_set_hl(0, terminal_highlight_group, { fg = '#ffae42' })
+end
+
+local function update_terminal_window_highlight(win)
+  if not vim.api.nvim_win_is_valid(win) then
+    return
+  end
+
+  local is_terminal = vim.bo[vim.api.nvim_win_get_buf(win)].buftype == 'terminal'
+  if is_terminal then
+    if terminal_window_highlights[win] == nil then
+      terminal_window_highlights[win] = vim.wo[win].winhighlight
+    end
+
+    local highlights = {}
+    for highlight in terminal_window_highlights[win]:gmatch('[^,]+') do
+      if not highlight:match('^Normal:') and not highlight:match('^NormalNC:') then
+        table.insert(highlights, highlight)
+      end
+    end
+    table.insert(highlights, 'Normal:' .. terminal_highlight_group)
+    table.insert(highlights, 'NormalNC:' .. terminal_highlight_group)
+    vim.wo[win].winhighlight = table.concat(highlights, ',')
+  elseif terminal_window_highlights[win] ~= nil then
+    vim.wo[win].winhighlight = terminal_window_highlights[win]
+    terminal_window_highlights[win] = nil
+  end
+end
+
+set_terminal_highlight()
+vim.api.nvim_create_autocmd('ColorScheme', {
+  group = vim.api.nvim_create_augroup('UserTerminalHighlight', { clear = true }),
+  callback = set_terminal_highlight,
+})
+
+vim.api.nvim_create_autocmd({ 'BufWinEnter', 'WinEnter' }, {
+  group = vim.api.nvim_create_augroup('UserTerminalWindowHighlight', { clear = true }),
+  callback = function(args)
+    local win = vim.api.nvim_get_current_win()
+    if args.event == 'BufWinEnter' and vim.api.nvim_get_current_buf() ~= args.buf then
+      for _, candidate in ipairs(vim.api.nvim_list_wins()) do
+        if vim.api.nvim_win_get_buf(candidate) == args.buf then
+          update_terminal_window_highlight(candidate)
+        end
+      end
+      return
+    end
+    update_terminal_window_highlight(win)
+  end,
+})
+
 vim.keymap.set('n', '<leader>/', function()
+  vim.cmd('tab terminal')
+  vim.cmd('startinsert')
+end, { desc = '在新分頁開啟終端機' })
+vim.keymap.set('n', '<leader>c', function()
   vim.cmd('botright 12split | terminal')
   vim.cmd('startinsert')
-end, { desc = '開啟終端機' })
+end, { desc = '在下方開啟終端機' })
 
 vim.api.nvim_create_autocmd('TermOpen', {
   group = vim.api.nvim_create_augroup('UserTerminalMappings', { clear = true }),
   callback = function(args)
+    update_terminal_window_highlight(vim.api.nvim_get_current_win())
+    vim.keymap.set('t', '<C-g>', function()
+      local alternate_buf = vim.fn.bufnr('#')
+      vim.cmd('stopinsert')
+      if alternate_buf > 0 and vim.api.nvim_buf_is_valid(alternate_buf) then
+        vim.api.nvim_set_current_buf(alternate_buf)
+      end
+    end, { buffer = args.buf, desc = '返回上一個 buffer 並保留終端機' })
     vim.keymap.set('t', '<C-q>', function()
       if vim.api.nvim_buf_is_valid(args.buf) then
-        vim.api.nvim_buf_delete(args.buf, { force = true })
+        close_terminal_buffer(args.buf, vim.api.nvim_get_current_win())
       end
     end, { buffer = args.buf, desc = '關閉並結束終端機程序' })
   end,
