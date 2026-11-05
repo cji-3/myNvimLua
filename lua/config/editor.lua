@@ -370,6 +370,32 @@ vim.keymap.set('n', '<leader>nh', '<cmd>nohlsearch<CR>', {
   silent = true,
 })
 
+local function open_keymap_document(filename)
+  local root = vim.fn.stdpath('config')
+  local keymaps_path = root .. package.config:sub(1, 1) .. filename
+  if vim.fn.filereadable(keymaps_path) == 0 then
+    vim.notify('找不到 ' .. filename .. '，請確認檔案位於 Neovim 設定目錄', vim.log.levels.ERROR)
+    return
+  end
+
+  local file_uri = 'file:///' .. keymaps_path:gsub('\\', '/')
+  if vim.fn.has('win32') == 1 then
+    vim.fn.jobstart({ 'cmd', '/c', 'start', '', file_uri }, { detach = true, hide = true })
+  elseif vim.fn.has('macunix') == 1 then
+    vim.fn.jobstart({ 'open', file_uri }, { detach = true, hide = true })
+  else
+    vim.fn.jobstart({ 'xdg-open', file_uri }, { detach = true, hide = true })
+  end
+end
+
+vim.keymap.set('n', '<leader>H', function()
+  open_keymap_document('KEYMAPS.html')
+end, { desc = '在瀏覽器開啟 KEYMAPS.html' })
+
+vim.keymap.set('n', '<leader>h', function()
+  open_keymap_document('KEYMAPS.md')
+end, { desc = '在瀏覽器開啟 KEYMAPS.md' })
+
 vim.keymap.set('n', '<leader>cf', function()
   local clients = vim.lsp.get_clients({ bufnr = 0, method = 'textDocument/formatting' })
   local clangd_attached = false

@@ -141,6 +141,7 @@ return {
       local diagnostic_translation_errors = {}
       local diagnostic_translations_pending = {}
       local diagnostic_change_generations = {}
+      local diagnostic_translation_retry_after = 0
 
       local function lighten_diagnostic_color(group, fallback_group)
         local highlight = vim.api.nvim_get_hl(0, { name = group, link = false })
@@ -237,8 +238,17 @@ return {
       local function translate_buffer_diagnostics(bufnr)
         local diagnostics = get_translatable_diagnostics(bufnr)
         show_diagnostic_translations(bufnr)
+        local now = vim.uv.now()
+        if now < diagnostic_translation_retry_after then
+          return
+        end
+
         for _, diagnostic in ipairs(diagnostics) do
           local message = diagnostic.message
+          local retry_at = diagnostic_translation_errors[message]
+          if retry_at and retry_at <= now then
+            diagnostic_translation_errors[message] = nil
+          end
           if not diagnostic_translations[message]
               and not diagnostic_translation_errors[message]
               and not diagnostic_translations_pending[message] then
@@ -249,10 +259,9 @@ return {
               show_diagnostic_translations(bufnr)
             end, function(error_message)
               diagnostic_translations_pending[message] = nil
-              diagnostic_translation_errors[message] = error_message
-              vim.notify("診斷訊息翻譯失敗：" .. error_message, vim.log.levels.WARN, {
-                title = "Bing 翻譯",
-              })
+              local retry_at = vim.uv.now() + 60000
+              diagnostic_translation_errors[message] = retry_at
+              diagnostic_translation_retry_after = math.max(diagnostic_translation_retry_after, retry_at)
             end)
           end
         end
